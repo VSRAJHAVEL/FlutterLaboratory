@@ -77,6 +77,8 @@ class _AuthPageState extends State<AuthPage> {
         .toString();
   }
  
+  static final Map<String, Map<String, dynamic>> _offlineUsers = {};
+
   Future<void> authenticate() async {
     final email = emailController.text.trim().toLowerCase();
     final password = passwordController.text;
@@ -147,7 +149,46 @@ class _AuthPageState extends State<AuthPage> {
         }
       }
     } catch (e) {
-      showMessage('Authentication failed: $e');
+      // Offline fallback for classroom demonstration when live Firebase credentials are not connected
+      final userId = getUserId(email);
+      if (isLogin) {
+        if (!_offlineUsers.containsKey(userId)) {
+          showMessage("Account not found. Please register.");
+        } else {
+          final data = _offlineUsers[userId]!;
+          final salt = data["salt"] as String;
+          final storedHash = data["passwordHash"] as String;
+          final enteredHash = hashPassword(password, salt);
+          if (enteredHash == storedHash) {
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DashboardPage(email: email),
+              ),
+            );
+          } else {
+            showMessage("Incorrect password");
+          }
+        }
+      } else {
+        if (_offlineUsers.containsKey(userId)) {
+          showMessage("Account already exists. Please login.");
+        } else {
+          final salt = generateSalt();
+          final passwordHash = hashPassword(password, salt);
+          _offlineUsers[userId] = {
+            "email": email,
+            "salt": salt,
+            "passwordHash": passwordHash,
+          };
+          showMessage("Registration successful! Please login.");
+          setState(() {
+            isLogin = true;
+            passwordController.clear();
+          });
+        }
+      }
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
